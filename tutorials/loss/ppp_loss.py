@@ -44,93 +44,6 @@ class PPPloss(object):
             raise NotImplementedError()
         return self.softmax_joint(x_metric, labels, prototypes, memory_prototypes, device, gpu=True, pos=pos, neg=neg)
 
-    # def softmax_joint(self, x_metric, y, prototypes, device, gpu=True, pos=True, neg=True):
-    #     """
-    #     - \sum_{i in B^c} log(Pc) - \sum_{i in B^c}  \sum_{k \ne c} log( (1 - Pk))
-
-    #     Note:
-    #     log(Exp(y)) makes y always positive, which is required for our loss.
-    #     """
-    #     x_metric = F.normalize(x_metric, p=2, dim=1)
-    #     if torch.isnan(x_metric).any():
-    #         print("skipping NaN batch")
-    #         return torch.tensor(0)
-    #     assert pos or neg, "At least one of the pos/neg terms must be activated in the Loss!"
-    #     assert len(x_metric.shape) == 2, "Should only have batch and metric dimension."
-    #     bs = x_metric.size(0)
-
-    #     # All prototypes
-    #     # p_x, p_y = self.net.get_all_prototypes()
-    #     p_y = torch.tensor(list(prototypes.keys())).to(device)  # tensor([0, 1, 2])
-    #     if p_y.numel() == 0:
-    #         return torch.tensor(0, device=device)  # No prototypes available
-    #     p_x = torch.stack([prototypes[c].squeeze(0).to(device) for c in p_y.tolist()]).to(device)  # shape: [3, 16]
-    #     # Init
-    #     loss = torch.tensor(0.0)
-    #     y_unique = torch.unique(y).squeeze()
-    #     neg = False if len(y_unique.size()) == 0 else neg  # If only from the same class, there is no neg term
-    #     y_unique = y_unique.view(-1)
-
-    #     # Log
-    #     tmplate = str("{: >20} " * y_unique.size(0))
-    #     # if self.net.log:
-    #     # print("\n".join(["-" * 40, "LOSS", tmplate.format(*list(y_unique))]))
-    #     self.tracker['lnL_pos'].append(0)
-    #     self.tracker['lnL_neg'].append(0)
-
-    #     # for label_idx in range(y_unique.size(0)):  # [summation over i]
-    #     for c in p_y.tolist():
-    #         # c = y_unique[label_idx]
-
-    #         # Select from batch
-    #         xc_idxs = (y == c).nonzero().squeeze(dim=1)
-    #         if xc_idxs.numel() == 0:    # 增加
-    #             continue
-    #         xc = x_metric.index_select(0, xc_idxs)
-
-    #         xk_idxs = (y != c).nonzero().squeeze(dim=1)
-    #         xk = x_metric.index_select(0, xk_idxs)
-
-    #         # p_idx = (p_y == c).nonzero().squeeze(dim=1)
-    #         # pc = p_x[p_idx].detach()
-    #         # pk = torch.cat([p_x[:p_idx], p_x[p_idx + 1:]]).detach()  # Other class prototypes
-    #         p_idx = (p_y == c).nonzero(as_tuple=False).squeeze()
-    #         if p_idx.numel() != 1:
-    #             raise ValueError(f"Expected exactly one prototype index for class {c}, but got {p_idx}")
-    #         p_idx = p_idx.item()  # Convert to Python int
-
-    #         # Now you can slice safely
-    #         pc = p_x[p_idx].detach()
-    #         pk = torch.cat([p_x[:p_idx], p_x[p_idx + 1:]], dim=0).detach()  # Other class prototypes    
-    #         # if self.net.log:
-    #         # print("Class {}:".format(str(c.item())), end='')
-
-    #         lnL_pos = self.attractor(pc, pk, xc, gpu, device, include_batch=True) if pos else torch.tensor(0.0)  # Pos
-    #         lnL_neg = self.repellor(pc, pk, xc, xk, gpu, device, include_batch=True) if neg else torch.tensor(0.0)  # Neg
-
-    #         # Pos + Neg
-    #         Loss_c = -lnL_pos - lnL_neg  # - \sum_{i in B^c} log(Pc) - \sum_{i in B^c}  \sum_{k \ne c} log( (1 - Pk))
-    #         # if self.net.log:
-    #         # print("{: >20}".format(
-    #         #     "| TOTAL: {:.1f} + {:.1f} = {:.1f}".format(float(-lnL_pos), float(-lnL_neg), float(Loss_c))))
-    #         self.tracker['lnL_pos'][-1] -= lnL_pos.item()
-    #         self.tracker['lnL_neg'][-1] -= lnL_neg.item()
-
-    #         # Update loss
-    #         loss = Loss_c if loss is None else loss + Loss_c
-
-    #         # Checks
-    #         try:
-    #             assert lnL_pos <= 0
-    #             assert lnL_neg <= 0
-    #             assert loss >= 0 and loss < 1e10
-    #         except:
-    #             traceback.print_exc()
-    #             exit(1)
-    #     # if self.net.log:
-    #     self.tracker['loss'].append(loss.item())
-    #     # print("-" * 40)
-    #     return loss / bs  # Make independent batch size
     def softmax_joint(self, x_metric, y, prototypes, memory_prototypes, device, gpu=True, pos=True, neg=True):
         """
         - \sum_{i in B^c} log(Pc) - \sum_{i in B^c}  \sum_{k \ne c} log( (1 - Pk))
@@ -148,7 +61,7 @@ class PPPloss(object):
 
         # All prototypes
         # p_x, p_y = self.net.get_all_prototypes()
-        prototypes = {k: v for k, v in prototypes.items() if not torch.all(v == 0)}            # 改：增加了一句代码
+        prototypes = {k: v for k, v in prototypes.items() if not torch.all(v == 0)}        
         p_y = torch.tensor(list(prototypes.keys())).to(device)  # tensor([0, 1, 2])
         if p_y.numel() == 0:
             return torch.tensor(0, device=device)  # No prototypes available
@@ -192,9 +105,9 @@ class PPPloss(object):
             # pc = p_x[p_idx].detach()
             # pk = torch.cat([p_x[:p_idx], p_x[p_idx + 1:]], dim=0).detach()  # Other class prototypes   
 
-######################################## 修改加入记忆原型 ############################################### 
-            pc_current = p_x[p_idx].detach()  # 当前批次原型
-            memory_pc_list = memory_prototypes.get(c, [])    # 历史原型列表
+######################################## add memory prototypes ############################################### 
+            pc_current = p_x[p_idx].detach()                          # current class prototype
+            memory_pc_list = memory_prototypes.get(c, [])             # memory prototypes for class c
             if len(memory_pc_list) > 0:
                 memory_pc_tensor = torch.stack([m for m in memory_pc_list], dim=0)  # shape: [M, D]
                 pc = torch.cat([pc_current.unsqueeze(0), memory_pc_tensor], dim=0).detach()  # shape: [1+M, D]
@@ -214,7 +127,7 @@ class PPPloss(object):
                 pk_list.append(k_proto)              # 15
 
             if len(pk_list) > 0:
-                pk = torch.cat(pk_list, dim=0).detach()  # CPU 上 detach
+                pk = torch.cat(pk_list, dim=0).detach()           # CPU
             else:
                 pk = torch.empty((0, pc.size(1)), device='cpu')
             pc = pc.to(device)
@@ -289,7 +202,7 @@ class PPPloss(object):
             pos_union_l = []
             pos_len = 1
         # pos_union_l.append(pc.unsqueeze(0)) 
-        pos_union_l.append(pc)                  # 增加 memory_prototypes的时候使用
+        pos_union_l.append(pc)                  # memory_prototypes
 
         if gpu:
             pos_union_l = [x.to(device) for x in pos_union_l]
@@ -311,40 +224,33 @@ class PPPloss(object):
         expPc_pos = Pc_pos.sum(0) / (pos_len)  # Don't count self in
         lnL_pos = expPc_pos.log_().sum()
 
-        # try:                                    # 改
-        #     assert lnL_pos <= 0
-        # except:
-        #     traceback.print_exc()
-        #     exit(1)
         return lnL_pos
     
 if __name__ == "__main__":
     import torch
     import torch.nn.functional as F
     from collections import defaultdict
-    # 假设特征维度为 D，batch size 为 B，类别数为 C
+    # test the PPP loss
+    # suppose the feature dim is D，batch size is B，class number is C
     torch.manual_seed(42)
     B, D, C = 12, 16, 3
     temperature = 0.7
 
-    # 生成伪造的特征向量 [B, D]
-    features = F.normalize(torch.randn(B, D), dim=1)  # 模拟嵌入后的特征，单位向量
+    features = F.normalize(torch.randn(B, D), dim=1)  
 
-    # 生成标签 [B]
-    # 让每个类都有若干样本，例如 4 个样本/类
+    # generate label [B]
+    # each class has 4 samples
     labels = torch.tensor([0]*4 + [1]*4 + [2]*4)
 
-    # 构造原型字典，使用 mean pooling 生成每类原型
+    # construct prototypes dict and use mean pooling to get prototype for each class
     prototypes = defaultdict(lambda: torch.zeros(D))
     for c in range(C):
         cls_feats = features[labels == c]
         prototypes[c] = cls_feats.mean(dim=0)
         prototypes[c] = F.normalize(prototypes[c], dim=0)  # 归一化
 
-    # 调用 ppp_loss
     # loss_value = ppp_loss(features, labels, prototypes, temperature=temperature)
     # print(f"PPP Loss = {loss_value.item():.6f}")
-
 
     loss_module = PPPloss(net=None, mode="joint", T=temperature, tracker={'log_it': [], 'loss': [], 'lnL_pos': [], 'lnL_neg': []})
     loss = loss_module(features, labels, prototypes, eps=1e-8)
