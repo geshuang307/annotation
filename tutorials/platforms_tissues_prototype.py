@@ -224,19 +224,6 @@ class ContinualClassify():
         if self.config["load_model"] is not None:
             load_pretrained(self.model, torch.load(self.model_file, map_location=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')), verbose=False)
         
-        # if self.config["freeze_except_layer1011"]:
-
-            # for name, param in self.model.named_parameters():
-            #     param.requires_grad = False
-            #     # if 'norm' in name:
-            #     #     param.requires_grad = True
-            #     if 'decoder' in name:
-            #         param.requires_grad = True
-            #     if 'out_layer' in name:
-            #         param.requires_grad = True
-            #     if "layers.11" or "layers.10" in name:
-            #         param.requires_grad = True
-
         if self.config["freeze_all"]:
             for name, param in self.model.named_parameters():
                 param.requires_grad = False
@@ -826,8 +813,6 @@ class ContinualClassify():
 
         return results, adata_t
     
-    
-    
     def update_classifier_weights(self, embedding_list, label_list):
         """
         Update classifier weights using class embedding means.
@@ -979,18 +964,18 @@ class ContinualClassify():
 
                 selected_embedding = filtered_embedding[top_indices]
                 print('entropy filter samples of class:{}'.format(class_index), selected_embedding.shape[0])
-                # 计算原型
+                # compute prototype
                 proto = selected_embedding.mean(0).float().detach()
                 assert proto.shape[0] == self.model.cls_decoder.out_layer.weight.shape[1]
 
-                # 更新该类的 prototype（out_layer 权重）
+                # update class prototype（out_layer weights）
                 with torch.no_grad():
                     self.model.cls_decoder.out_layer.weight[int(class_index)] = proto.to(self.device)
                 if self.config["proto_loss"]:
                     self.old_proto[int(class_index)] = proto.clone()
                     
             else:
-                # 没有分类正确的样本则跳过更新
+                # if classify wrong, no correctly classified samples then skip update
                 continue
         print('#########################', len(self.old_proto))
 
@@ -1237,28 +1222,11 @@ class ContinualClassify():
         if self.config["init_class"] == 8 or self.config['fewshot'] is not None:
         # if self.config["filter_sample"]:
             celltype_counts = adata_train.obs["celltype"].value_counts()
-            # ######### rare celltype <10 ################# reuse rare cell types
-            # rarecell_bank_current = sc.AnnData()
-            # rarecell_type = celltype_counts[celltype_counts < 10].index            # find rare cell types in each batch
-            # adata_rare = adata_train[adata_train.obs["celltype"].isin(rarecell_type)].copy()  
-            # rarecell_bank_current = adata_rare if len(rarecell_bank_current) == 0 else rarecell_bank_current.concatenate(adata_rare) 
-            # if test_batch_idx > 0:
-            #     dict_cell = torch.load(save_dir / "rarecell.pth")
-            #     rarecell_bank_previous = dict_cell['rarecell_bank'] 
-            #     rarecell_bank_current = rarecell_bank_previous.concatenate(rarecell_bank_current)
-            #     adata_train = adata_train.concatenate(rarecell_bank_current)
-            #     torch.save({'rarecell_bank': rarecell_bank_current}, save_dir / "rarecell.pth")
-            # else:
-            #     # rarecell_bank_previous = sc.AnnData()
-            #     # rarecell_bank_current = rarecell_bank_previous.concatenate(rarecell_bank_current)
-            #     torch.save({'rarecell_bank': rarecell_bank_current}, save_dir / "rarecell.pth")
-            # ##################################################################
             # find cell types with sufficient counts
             valid_celltypes = celltype_counts[celltype_counts >= self.config["fewshot"] + 1].index
 
             # filter out samples from classes with insufficient counts
             adata_train = adata_train[adata_train.obs["celltype"].isin(valid_celltypes)].copy()
-
 
         le = LabelEncoder()
         adata_train.obs["batch_id"] = le.fit_transform(adata_train.obs["batch_id"])
@@ -1337,7 +1305,6 @@ class ContinualClassify():
                 #     else adata_train.layers[input_layer_key]
                 # )
             
-
     ############################# Prepare model ###############################
         old_out_layer = self.model.cls_decoder.out_layer
         old_out_features = old_out_layer.out_features
@@ -1478,26 +1445,7 @@ class ContinualClassify():
                     axis=0,
                     merge='same'
                 )
-            # (
-            #     train_data,
-            #     valid_data,
-            #     train_celltype_labels,
-            #     valid_celltype_labels,
-            #     train_batch_labels,
-            #     valid_batch_labels,
-            # ) = train_test_split(
-            #     all_counts, celltypes_labels, batch_ids, test_size=0.1, shuffle=True, stratify=celltypes_labels
-            # )
-        # np.save(save_dir / "train_celltype_labels.npy", train_celltype_labels)
-        # np.save(save_dir / "valid_celltype_labels.npy", valid_batch_labels)
-        # sample from past batches
-        # if self.past_data is not None:
-        #     kmeans = KMeans(n_clusters=self.config["k_samples"])
-        #     kmeans.fit(self.past_data)
-        #     sampled_indices = kmeans.cluster_centers_indices_
-        #     sampled_past_data = self.past_data[sampled_indices]
-        #     train_data = np.concatenate((train_data, sampled_past_data), axis=0)
-        #     train_batch_labels = np.concatenate((train_batch_labels, np.full(len(sampled_past_data), -1)), axis=0)
+          
         if self.config["weighted_loss"]:
             labels = torch.tensor(adata_train_split.obs["celltype_labels"].values, dtype=torch.long).to(self.device)
             class_counts = torch.bincount(labels)  # shape: [num_classes]
@@ -1628,15 +1576,6 @@ class ContinualClassify():
                 )
             
 
-            # if self.config["do_train"]:
-            #     # if self.early_stopper.early_stop or epoch == self.config["epochs"]:
-            #     if epoch == self.config["epochs"]:
-            #         if self.config["entropy"]:
-            #             self.update_classifier_weights_entropy(cell_emb_list, celltype_labels, entropy_list, accuracy_list)
-            #         else:
-            #             self.update_classifier_weights(cell_emb_list, celltype_labels)
-            
-
             # if self.config["fewshot"] and epoch % 10 == 0:    # changes under fewshot        
             val_loss, val_err, result_dict, eval_iter_loss_list, val_proto_loss = self.evaluate(
                 loader=valid_loader,
@@ -1649,17 +1588,6 @@ class ContinualClassify():
             val_proto_list.append(val_proto_loss)
             contrastive_proto_loss_list.append(contrastive_proto_loss)
             learning_rate.append(self.optimizer.param_groups[0]['lr'])
-
-            # elif epoch == self.config["epochs"]:
-            #     if self.config["entropy"]:
-            #         self.update_classifier_weights_entropy(cell_emb_list, celltype_labels, entropy_list, accuracy_list)
-            #     else:
-            #         self.update_classifier_weights(cell_emb_list, celltype_labels)
-            # else:
-            #     pass
-
-            # print(f"Epoch: {epoch}, early_stop: {self.early_stopper.early_stop}, total_epochs: {self.config['epochs']}")
-            
         
             eval_epoch_loss.append(val_loss)
             elapsed = time.time() - epoch_start_time
@@ -1793,70 +1721,9 @@ class ContinualClassify():
         )
         combined_adata_test.obs["batch_id"] = le.fit_transform(combined_adata_test.obs["batch_id"])
 
-        # for batch_i in range(len(all_adata_test)):
-        #     this_batch_adata = all_adata_test[batch_i]
-        #     this_batch_adata.obs["batch_id"] = le.fit_transform(this_batch_adata.obs["batch_id"])
-
-        #     results_batch_i, _ = self.eval_testdata(
-        #         adata_t=this_batch_adata,
-        #         gene_ids=gene_ids,
-        #         input_layer_key=input_layer_key,
-        #         logger=logger
-        #     )
-
-        #     all_batch_results[f"batch_{batch_i}_after_batch_{test_batch_idx}"] = results_batch_i
-
-        # with open(save_dir / f"{dataset_name}_{experiment_name}_after_batch_{test_batch_idx}_per_batch_results.json",
-        #           "w") as f:
-        #     json.dump(all_batch_results, f, indent=4)
         ##################### Use best eval model for clustering evaluation and next-batch initialization ######################
         if self.config["use_best_initnextbatch"]:
             load_pretrained(self.model, torch.load(save_dir / f"best_model_batch_{test_batch_idx}.pt"), verbose=False)
-
-        # results, adata_sorted = self.eval_testdata(
-        #     adata_t=combined_adata_test,
-        #     gene_ids=gene_ids,
-        #     input_layer_key=input_layer_key,
-        #     # logger=logger
-        # )
-
-        # sc.pp.neighbors(adata_sorted, use_rep="X_scGPT")
-        # sc.tl.umap(adata_sorted, min_dist=0.3)
-        # sc.pl.umap(
-        #     adata_sorted,
-        #     color=["str_batch"],
-        #     title=[f"batch, avg_batch = {results.get('avg_batch', 0.0):.4f}"],
-        #     frameon=False,
-        #     show=False,
-        # )
-        # plt.savefig(
-        #     str(save_dir) + "/" + dataset_name + "_" + experiment_name + "_" + f"embeddings_batch_umap[cls]_batch_{test_batch_idx}.png",
-        #     bbox_inches='tight')
-
-        # sc.pp.neighbors(adata_sorted, use_rep="X_scGPT")
-        # sc.tl.umap(adata_sorted, min_dist=0.3)
-        # sc.pl.umap(
-        #     adata_sorted,
-        #     color=["celltype"],
-        #     title=[f"celltype, avg_bio = {results.get('avg_bio', 0.0):.4f}"],
-        #     frameon=False,
-        #     show=False,
-        # )
-        # plt.savefig(
-        #     str(save_dir) + "/" + dataset_name + "_" + experiment_name + "_" + f"embeddings_celltype_umap[cls]_batch_{test_batch_idx}.png",
-        #     bbox_inches='tight')
-
-        # with open(str(save_dir) + "/" + dataset_name + "_" + experiment_name + f"_batch_{test_batch_idx}_final_results.json",
-        #           "w") as f:
-        #     json.dump(results, f, indent=4)
-
-        # update past data and models
-        # self.past_data = all_counts
-
-        # if self.config["pastmse"]:
-        #     self.past_model = copy.deepcopy(best_model)
-        #     for p in self.past_model.parameters():
-        #         p.requires_grad = False
 
         if test_batch_idx == self.max_test_id:
             self.plot_clusters_prototypes(combined_adata_test, self.old_proto, input_layer_key, gene_ids, test_batch_idx, save_dir, best_model)
@@ -1984,7 +1851,7 @@ class ContinualClassify():
 
         highlight_batch_list = batches.unique()
         print("highlight_batch_list", highlight_batch_list)
-        ################## query mapping(先 umap_fit 拟合 reference 后进行 query mapping) #################################
+        ################## query mapping #################################
         if self.config["dataset_name"] == "pancreas" or self.config["dataset_name"] == "pancreas_filter3":
             reference_batch = ["celseq", "celseq2", "fluidigmc1", "inDrop1", "inDrop2", "inDrop3"]
             highlight_batch_list = ["inDrop4", "smarter", "smartseq2"]
@@ -1998,38 +1865,28 @@ class ContinualClassify():
         n_cells = X_all.shape[0] - n_prototypes
         if experiment == "outlier_detection":
             plot_outlier_detection_umap(self.config, n_cells, X_all, labels, prototypes_np, ref_mask, query_mask, save_dir, test_batch_idx, legend_on = False)
-        # # Step 3: 降维
-        # umap_model = umap.UMAP(n_neighbors=15, min_dist=0.3, metric="cosine", random_state=42)
-        # X_ref = X_all[:n_cells][ref_mask]
-        # X_query = X_all[:n_cells][query_mask]
-        # umap_model.fit(X_ref)
-        # U_ref = umap_model.transform(X_ref)
-        # U_query = umap_model.transform(X_query)
-        # prototypes_np = umap_model.transform(X_all[n_cells:])
-        # X_umap = np.vstack([U_ref, U_query, prototypes_np])
-        # labels_ref = labels[ref_mask]
-        # labels_query = labels[query_mask]
+
         elif experiment == "query_mapping":
             ######################## not query mapping ########################
             umap_model = umap.UMAP(n_neighbors=15, min_dist=0.3, metric="cosine", random_state=42)
             X_umap = umap_model.fit_transform(X_all)  # [n_cells + n_prototypes, 2]
             ################################################################# 
             
-            # # # ✅ 1. 获取所有 celltype 并建立全局颜色映射
+            # # # get all celltype and construct global mapping
             # all_celltypes = sorted(np.unique(labels))
             all_celltypes = np.unique(labels)
             palette = sns.color_palette("tab20", n_colors=len(all_celltypes))
             color_map = dict(zip(all_celltypes, palette))   
 
-            # ######################## 画 reference 图 ######################
+            # ######################## plot reference figures ######################
             plt.figure(figsize=(5, 5))
             
             sns.scatterplot(
                 x=X_umap[:n_cells, 0][ref_mask],
                 y=X_umap[:n_cells, 1][ref_mask],
                 hue=labels[ref_mask],
-                palette=color_map,       # 固定颜色
-                s=30000 / n_cells,       # 5
+                palette=color_map,      
+                s=30000 / n_cells,       
                 linewidth=0,
                 legend=legend_on
             )
@@ -2055,7 +1912,7 @@ class ContinualClassify():
             plt.savefig(out_path, bbox_inches="tight", edgecolor="black", dpi=300)
             plt.close()    
             
-            # # ✅ 2. 循环画图: query mapping
+            # # 2. plot figure in a loop: query mapping
             from plot_prototype.plot_umap import plot_umap_gray_incremental
             for test_batch_idx in range(len(highlight_batch_list)):
                 selected_batches = highlight_batch_list[:test_batch_idx+1]
@@ -2065,7 +1922,7 @@ class ContinualClassify():
                     mask, test_batch_idx,
                     save_dir, save_name = "label_eval&test_new", legend_on = False
                 )
-                ################# 改：增加 prediction 可视化 ########################
+                ################# add prediction visualization ########################
                 plot_umap_gray_incremental(
                     X_umap, n_cells, batches, current_predict_labels, color_map,
                     mask, test_batch_idx,
@@ -2077,7 +1934,7 @@ class ContinualClassify():
                 # else:
                 #     plt.figure(figsize=(5, 5))
                 
-                # # 背景：先把所有细胞填成灰色
+                # # background：plot gray of all cells initially
                 # sns.scatterplot(
                 #     x=X_umap[:n_cells, 0],
                 #     y=X_umap[:n_cells, 1],
@@ -2087,7 +1944,7 @@ class ContinualClassify():
                 #     legend=False
                 # )
 
-                # # ✅ 前景：显示前 test_batch_idx+1 个 batch
+                # # ：first test_batch_idx+1 batches
                 # # selected_batches = highlight_batch_list[:test_batch_idx+1]
                 # # mask = batches.isin(selected_batches)
                 # # 
@@ -2095,13 +1952,13 @@ class ContinualClassify():
                 #     x=X_umap[:n_cells, 0][mask],
                 #     y=X_umap[:n_cells, 1][mask],
                 #     hue=labels[mask],
-                #     palette=color_map,   # 固定颜色
+                #     palette=color_map,   
                 #     s=5,
                 #     linewidth=0,
                 #     legend=legend_on
                 # )
 
-                # 添加原型
+                # add prototypes
                 # plt.scatter(
                 #     X_umap[n_cells:, 0],
                 #     X_umap[n_cells:, 1],
@@ -2133,7 +1990,7 @@ class ContinualClassify():
                 #     )
                 # plt.close()
                 
-        ##################### batch 画图 ############################   
+        ##################### batch plot ############################   
         # plot batch corectionif legend_on:
             # if legend_on:
             #     plt.figure(figsize=(7, 5))
@@ -2148,8 +2005,8 @@ class ContinualClassify():
             #     linewidth=0,
             #     legend=legend_on
             # )
-            # plt.xticks([])  # 去掉x轴刻度
-            # plt.yticks([])  # 去掉y轴刻度
+            # plt.xticks([])  
+            # plt.yticks([])  
             # plt.tight_layout()
             # ax = plt.gca()
             # for spine in ax.spines.values():
@@ -2161,7 +2018,7 @@ class ContinualClassify():
             # else:
             #     plt.savefig(str(save_dir) + "/" + save_name + f"umap_batch_correction_batch{test_batch_idx}_evaltest.png", bbox_inches='tight', edgecolor='black',dpi=300)
         
-        ################### 筛选稀少细胞类型的数据所在的index #################################
+        ################### filter rare cell type index #################################
         # if self.config["dataset_name"] == "pancreas_filter3":
         #     target_cts = {"macrophage", "mast", "quiescent_stellate"}
         # elif self.config["dataset_name"] == "myeloid_filter3":
@@ -2170,10 +2027,10 @@ class ContinualClassify():
         #     pass
         # mask_filter3 = adata.obs["celltype"].astype(str).isin(target_cts)   
         
-        # target_indices = adata.obs_names[mask_filter3]          # Index 对象
+        # target_indices = adata.obs_names[mask_filter3]          # Index 
         # plt.figure(figsize=(5, 5))
 
-        # # 背景：所有细胞灰色
+   
         # sns.scatterplot(
         #     x=X_umap[:n_cells, 0],
         #     y=X_umap[:n_cells, 1],
@@ -2186,7 +2043,7 @@ class ContinualClassify():
         #     x=X_umap[:n_cells, 0][mask_filter3],
         #     y=X_umap[:n_cells, 1][mask_filter3],
         #     hue=labels[mask_filter3],
-        #     palette=color_map,   # 固定颜色
+        #     palette=color_map,  
         #     s=30000/n_cells,
         #     linewidth=0,
         #     legend=legend_on
@@ -2214,7 +2071,6 @@ class ContinualClassify():
     def plot_clusters_prototypes(self, adata, prototype, input_layer_key, gene_ids, test_batch_idx, save_dir, best_model = None, save_name="val", cell_type_map = None):
     # prototypes = F.normalize(prototype.prototypes, dim=1)
     # # prototypes = prototype.prototypes
-    # # Step 1: 获取细胞和原型嵌入
     # X_cells = adata_sorted.obsm["X_scGPT"]  # 细胞嵌入向量，shape = [n_cells, 1200]
     # n_cells = X_cells.shape[0]
         # plt.rcParams.update({'font.size': 16})
@@ -2301,27 +2157,26 @@ class ContinualClassify():
         prototypes_np = prototypes.detach().cpu().numpy() if torch.is_tensor(prototypes) else prototypes
         n_prototypes = prototypes_np.shape[0]
 
-        # Step 2: 合并所有向量
+        # concatenate all vectors (cell & prototypes)
         X_all = np.concatenate([X_cells.detach().cpu().numpy(), prototypes_np], axis=0)
 
-        # Step 3: 降维
+        # reduce dimension with UMAP
         umap_model = umap.UMAP(n_neighbors=15, min_dist=0.3, metric="cosine", random_state=42)
         X_umap = umap_model.fit_transform(X_all)  # [n_cells + n_prototypes, 2]
 
-        # Step 4: 用真实标签绘图
+        # use true labels to plot
         plt.figure(figsize=(5, 5))
 
-        # 获取真实标签（必须存在于 .obs 中）
+        # get real labels（must exsist in .obs）
         if cell_type_map !=None:
             celltype_str_list = np.array(adata.obs["celltype"]).tolist()
             current_celltype_labels = [cell_type_map[cell] for cell in celltype_str_list]
             current_celltype_labels = np.array(current_celltype_labels)
-            adata.obs["celltype_labels"] = current_celltype_labels                   # 先临时保存一下
+            adata.obs["celltype_labels"] = current_celltype_labels                
             labels = adata.obs["celltype_labels"]
         else:
             labels = adata.obs["celltype"]
 
-        # 用 seaborn 画 UMAP + 标签着色
         sns.scatterplot(
             x=X_umap[:n_cells, 0],
             y=X_umap[:n_cells, 1],
@@ -2332,12 +2187,12 @@ class ContinualClassify():
             legend=True
         )
  
-        # 添加原型
+        # prototypes
         plt.scatter(
             X_umap[n_cells:, 0],
             X_umap[n_cells:, 1],
-            edgecolors='black',     # 边框颜色为黑色
-            facecolors='none',      # 中空
+            edgecolors='black',    
+            facecolors='none',    
             s=60,
             marker='X',
             label='Prototypes',
@@ -2347,9 +2202,9 @@ class ContinualClassify():
         plt.legend(markerscale=3, bbox_to_anchor=(1.02, 1), loc='upper left', frameon=False)
         # plt.xlabel("UMAP1")
         # plt.ylabel("UMAP2")
-        plt.xticks([])  # 去掉x轴刻度
-        plt.yticks([])  # 去掉y轴刻度
-        plt.margins(0)        # ✅ 关键：去掉默认 margin
+        plt.xticks([]) 
+        plt.yticks([])  
+        plt.margins(0)       
         plt.axis("equal")
         plt.tight_layout()
         ax = plt.gca()
@@ -2374,8 +2229,8 @@ class ContinualClassify():
             legend=True
         )
         plt.legend(markerscale=3, bbox_to_anchor=(1.05, 1), loc='upper left', frameon=False)
-        plt.xticks([])  # 去掉x轴刻度
-        plt.yticks([])  # 去掉y轴刻度
+        plt.xticks([])  
+        plt.yticks([])  
         plt.tight_layout()
         ax = plt.gca()
         for spine in ax.spines.values():
@@ -2405,7 +2260,7 @@ class ContinualClassify():
         tokenized_all = tokenize_and_pad_batch(
             all_counts,
             gene_ids,
-            max_len=3001,                           # 应该是1201
+            max_len=3001,                 
             vocab=self.vocab,
             pad_token="<pad>",
             pad_value=-2,
@@ -2415,7 +2270,7 @@ class ContinualClassify():
         all_gene_ids, all_values = tokenized_all["genes"].to(self.device), tokenized_all["values"].to(self.device)
         src_key_padding_mask = all_gene_ids.eq(self.vocab["<pad>"])
         batch_ids = torch.tensor(adata.obs["batch_id"].values).to(self.device)
-        batch_ids = torch.zeros_like(batch_ids)                    # 在实际训练中只训练了一个BN层，因此batch_ids都要设置为0
+        batch_ids = torch.zeros_like(batch_ids)                    # only one BN layer is trained, so the batch_ids need to be set to 0.
 
         with torch.no_grad(), torch.cuda.amp.autocast(enabled=self.config["amp"]):
             if self.config["adapter"] or self.config["loramoe"] or self.config["lora"]:
@@ -2459,28 +2314,21 @@ class ContinualClassify():
         cell_embeddings = F.normalize(cell_embeddings, dim=1)
         X_cells = cell_embeddings
         prototypes = F.normalize(prototype, dim=1)
-        # 假设你已有 prototypes（形状为 [n_prototypes, 1200]）
-        # 若是 tensor，转为 numpy
+        # prototypes（shape [n_prototypes, 1200]）
         prototypes_np = prototypes.detach().cpu().numpy() if torch.is_tensor(prototypes) else prototypes
         n_prototypes = prototypes_np.shape[0]
 
-        # Step 2: 合并所有向量
         X_all = np.concatenate([X_cells.detach().cpu().numpy(), prototypes_np], axis=0)
 
-        # Step 3: 降维
         umap_model = umap.UMAP(n_neighbors=15, min_dist=0.3, metric="cosine", random_state=42)
         X_umap = umap_model.fit_transform(X_all)  # [n_cells + n_prototypes, 2]
 
-        # Step 4: 用真实标签绘图
-        # plt.figure(figsize=(7, 5))
-        # plt.subplot(1, 6, test_batch_idx+1)
-        # 获取真实标签（必须存在于 .obs 中）
         # labels = adata.obs["celltype"]
         if cell_type_map !=None:
             celltype_str_list = np.array(adata.obs["celltype"]).tolist()
             current_celltype_labels = [cell_type_map[cell] for cell in celltype_str_list]
             current_celltype_labels = np.array(current_celltype_labels)
-            adata.obs["celltype_labels"] = current_celltype_labels                   # 先临时保存一下
+            adata.obs["celltype_labels"] = current_celltype_labels             
             labels = adata.obs["celltype_labels"]
         else:
             labels = adata.obs["celltype"]
@@ -2490,7 +2338,6 @@ class ContinualClassify():
         else:
             labels_batch = adata.obs["str_batch"]
         
-        # 用 seaborn 画 UMAP + 标签着色
         ax1 = plt.subplot(2, max_batch_idx, test_batch_idx+1)
         sc1 = sns.scatterplot(
             x=X_umap[:n_cells, 0],
@@ -2503,12 +2350,12 @@ class ContinualClassify():
             ax=ax1
         )
  
-        # 添加原型
+        # prototypes
         # plt.scatter(
         #     X_umap[n_cells:, 0],
         #     X_umap[n_cells:, 1],
-        #     edgecolors='black',     # 边框颜色为黑色
-        #     facecolors='none',      # 中空
+        #     edgecolors='black',     
+        #     facecolors='none',     
         #     s=60,
         #     marker='X',
         #     label='Prototypes'
@@ -2520,7 +2367,7 @@ class ContinualClassify():
         plt.xticks([])  # 去掉x轴刻度
         plt.yticks([])  # 去掉y轴刻度
 
-        ax2 = plt.subplot(2, max_batch_idx, max_batch_idx + test_batch_idx + 1)   # 两行六列，第二行
+        ax2 = plt.subplot(2, max_batch_idx, max_batch_idx + test_batch_idx + 1)  
         sc2 = sns.scatterplot(
             x=X_umap[:n_cells, 0],
             y=X_umap[:n_cells, 1],
@@ -2528,7 +2375,7 @@ class ContinualClassify():
             palette="tab10",
             s=30000/n_cells,
             linewidth=0,
-            legend=False,     # 打开为full保存一张
+            legend=False,    
             ax=ax2
         )
         plt.xticks([]); plt.yticks([])
@@ -2546,24 +2393,24 @@ class ContinualClassify():
             input_gene_ids,
             input_values,
             src_key_padding_mask=src_key_padding_mask,
-            batch_labels=None,  # 或按需要传
+            batch_labels=None,  
             CLS=True,
             CCE=False,
             MVC=False,
             ECS=False,
             do_sample=False,
         )
-        # 返回一个 scalar，可用于 IG
-        cell_emb = output_dict["cell_emb"]  # [batch, dim]
-        scalar_output = cell_emb.norm(dim=1)  # 对 batch 内所有细胞求和，得到 scalar
+
+        cell_emb = output_dict["cell_emb"] 
+        scalar_output = cell_emb.norm(dim=1)  
         return scalar_output
     
     def forward_latent_with_ig(self, adata_test, save_dir, test_batch_idx, cell_type_map):
         from plot_prototype.plot_clusters import plot_eval_cell_emb
         """
-        原 forward_latent 基础上增加 IG 归因计算
+        Add Integrated Gradients (IG) attribution computation on top of forward_latent
         """
-        # ---- 原始数据准备流程保持不变 ----
+        # ---- Keep original data preparation flow unchanged ----
         self.config["weight_dir"] = save_dir
         le = LabelEncoder()
         adata_test.obs["batch_id"] = le.fit_transform(adata_test.obs["batch_id"])
@@ -2624,10 +2471,10 @@ class ContinualClassify():
             celltype_labels = batch_data["celltype_labels"]
             src_key_padding_mask = input_gene_ids.eq(self.vocab["<pad>"])
 
-            # baseline 可以用全零
+            # baseline can be all zeros
             baseline_values = torch.zeros_like(input_values).to(self.device)
 
-            n_steps = 10  # IG 步数
+            n_steps = 10  # IG steps
             alphas = torch.linspace(0, 1, n_steps).to(self.device)
 
             # 用于累积梯度
@@ -2638,8 +2485,8 @@ class ContinualClassify():
                     interpolated = baseline_values + alpha * (input_values - baseline_values)
                     interpolated.requires_grad_(True)
                     
-                    # 前向
-                    
+                    # forward pass
+
                     output_dict, _ = self.model(
                         input_gene_ids,
                         interpolated,
@@ -2653,7 +2500,7 @@ class ContinualClassify():
                         do_sample=False,
                     )
                     
-                    # scalar 输出（这里用所有 cell embedding 的 norm sum）
+                    # scalar output (here use the norm of the cell embedding)
                     cell_emb = output_dict["cell_emb"]  # [B, dim]
                     scalar_output = cell_emb.norm(dim=1)  # scalar
 
@@ -2668,14 +2515,14 @@ class ContinualClassify():
 
                     grads += grad
 
-            # 近似积分
+            # approximate integration
             attr = (input_values - baseline_values) * grads / n_steps   # (1, 1201)
             all_attr.append(attr.cpu().detach())
             all_label.append(celltype_labels)
         all_attr = torch.cat(all_attr)
         plot_eval_cell_emb(save_dir, all_attr, all_label, cell_type_map, save_name = f'clustermap_Cell_Embeddings_attr_genes_testbatch{test_batch_idx}.png')
            
-        return all_attr  # 每个 batch 的归因分数列表
+        return all_attr  # list of attribution scores for each batch
 
     def predict_confidence(self, adata_test, save_dir, gene_ids, test_batch_idx, cell_type_map):
         from testtime_dropout import compute_confidence_myeloid, prototype_dist_correlation
@@ -2702,7 +2549,7 @@ class ContinualClassify():
         )
         genes = adata_test.var["gene_name"].tolist()
         gene_ids = np.array(self.vocab(genes), dtype=int)
-        # 计算当前批次 (test_batch_idx) 的细胞类型和标签
+        # compute cell types and labels for current batch (test_batch_idx)
         # current_label_dict, current_celltype_labels = np.unique(
         #     np.array(adata_test.obs["celltype"].tolist()), return_inverse=True
         # )
@@ -2710,19 +2557,10 @@ class ContinualClassify():
         celltype_str_list = np.array(adata_test.obs["celltype"]).tolist()
         current_celltype_labels = [cell_type_map[cell] for cell in celltype_str_list]
         current_celltype_labels = np.array(current_celltype_labels)
-        adata_test.obs["celltype_labels"] = current_celltype_labels                   # 先临时保存一下
+        adata_test.obs["celltype_labels"] = current_celltype_labels                   # temporarily save
         batch_ids = adata_test.obs["batch_id"].tolist()
         batch_ids = np.array(batch_ids)
-        # (
-        #     train_data,
-        #     valid_data,
-        #     train_celltype_labels,
-        #     valid_celltype_labels,
-        #     train_batch_labels,
-        #     valid_batch_labels,
-        # ) = train_test_split(
-        #     all_counts, current_celltype_labels, batch_ids, test_size=0.0, shuffle=True
-        # )
+
         tokenized_test = tokenize_and_pad_batch(
             all_counts,
             gene_ids,
@@ -2823,28 +2661,11 @@ class ContinualClassify():
             with open(str(save_dir) + "/" + f"predict_test_batch_{test_batch_idx}.json", "w") as f:
                 json.dump(result_dict, f)
                 
-            ############### 画混淆矩阵 ###################
-            # class_names = np.unique(np.concatenate((labellist, predictions)))  # 获取所有类别
-            # cm = confusion_matrix(labellist, predictions, labels=class_names)
-            # cm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
-            # cm = pd.DataFrame(cm, index=class_names, columns=class_names)
-            # # 绘制热力图
-
-            # plt.figure(figsize=(6, 5))
-            # sns.heatmap(cm, annot=True, fmt=".1f", cmap='Blues', 
-            #             xticklabels=class_names, yticklabels=class_names, annot_kws={"size": 8})  # 调小字体)
-
-            # plt.xlabel('Predicted Labels')
-            # plt.ylabel('True Labels')
-            # plt.title('Confusion Matrix')
-            # plt.tight_layout()
-            # plt.savefig(str(save_dir) + "/" + f"predict_test_batch_{test_batch_idx}_Confusion_Matrix.png", dpi=300)
-            
-            ############## 画混淆矩阵 ###################
+            ############## Plot confusion matrix ###################
             
             class_names = np.unique(np.concatenate((labellist, predictions)))  # 获取所有类别
             pred_counts = pd.Series(labellist).value_counts()
-            pred_counts = pred_counts.reindex(class_names, fill_value=0)   # 保持顺序一致
+            pred_counts = pred_counts.reindex(class_names, fill_value=0)   # keep order consistent
             
             palette = sns.color_palette("tab20", len(class_names))
             celltype_colors = dict(zip(class_names, palette))
@@ -2854,7 +2675,7 @@ class ContinualClassify():
 
             fig, ax = plt.subplots(figsize=(10, 2))
 
-            # ----------- 画柱状图 ----------
+            # ----------- draw bar chart ----------
             ax.bar(
                 x_positions,
                 pred_counts.values,
@@ -2863,14 +2684,14 @@ class ContinualClassify():
                 alpha=0.9
             )
 
-            # y 轴标签
+            # y-axis label
             ax.set_ylabel("Count", fontsize=12)
 
-            # x 轴标签显示类别名称
+            # x-axis labels show class names
             ax.set_xticks(x_positions)
             ax.set_xticklabels(class_names, rotation=45, ha='right', fontsize=10)
 
-            # ----------- 添加数字标注 ----------
+            # ----------- add numeric annotations ----------
             for i, count in enumerate(pred_counts.values):
                 ax.text(
                     i,
@@ -2881,18 +2702,18 @@ class ContinualClassify():
                     fontsize=12
                 )
 
-            # 美化
+            # beautify
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
 
             plt.tight_layout()
             plt.savefig(f"{save_dir}/predict_test_batch_{test_batch_idx}_Confusion_Matrix_with_counts.png",
                 dpi=300)
-            ############################## heatmap 混淆矩阵 ##############################
+            ############################## heatmap confusion matrix ##############################
             
             cm = confusion_matrix(labellist, predictions, labels=class_names)
             cm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
-            cm = np.round(cm, 1)  # 将每个元素四舍五入到2位小数
+            cm = np.round(cm, 1)  # round each element to one decimal place
             cm = pd.DataFrame(cm, index=class_names, columns=class_names)
             # 绘制热力图
 
@@ -2908,18 +2729,18 @@ class ContinualClassify():
             ax.set_xticks([])
             ax.set_yticks([])
             
-            # ====== 在 X/Y 轴绘制颜色条 ======
-            # x 轴颜色条
+            # ====== draw color bars on X/Y axes ======
+            # x-axis color bar
             for i, ct in enumerate(class_names):
                 ax.add_patch(plt.Rectangle((i, cm.shape[0]), 1, 0.2, 
                                         color=celltype_colors[ct], clip_on=False, transform=ax.transData))
 
-            # y 轴颜色条
+            # y-axis color bar
             for i, ct in enumerate(class_names):
                 ax.add_patch(plt.Rectangle((-0.2, i), 0.2, 1, 
                                         color=celltype_colors[ct], clip_on=False, transform=ax.transData))
 
-            # ====== 添加 legend ======
+            # ====== add legend ======
             # handles = [plt.Line2D([0], [0], marker='s', color=color, linestyle='', markersize=10) 
             #         for color in celltype_colors.values()]
             # ax.legend(handles, class_names, title="Cell Types", bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -2949,7 +2770,7 @@ class ContinualClassify():
 
         plt.figure(figsize=(10, 8))
 
-        # 子图1：训练损失
+        # Subplot 1: Training Loss
         plt.subplot(2, 1, 1)
         plt.plot(epochs_train, train_loss_list_all, label='Train Loss', marker='o', color='blue')
         plt.xlabel("Iter")
@@ -2958,7 +2779,7 @@ class ContinualClassify():
         plt.grid(True)
         plt.tight_layout()
 
-        # 子图2：验证损失
+        # Subplot 2: Validation Loss
         plt.subplot(2, 1, 2)
         plt.plot(epochs_val, val_loss_list_all, label='Validation Loss', marker='s', color='orange')
         plt.xlabel("Iter")
@@ -2967,7 +2788,7 @@ class ContinualClassify():
         plt.grid(True)
         plt.tight_layout()
 
-        # 保存图像
+            # save figure
         plt.savefig(save_dir / f"train_val_loss_batch{test_batch_idx}.png")
 
     def plot_contrastive_loss(self, contrastive_proto_loss_list,save_dir, test_batch_idx):
@@ -3006,11 +2827,11 @@ class ContinualClassify():
         plt.grid(True)
         plt.tight_layout()
 
-        # 保存图像
+        # save figure
         plt.savefig(save_dir / f"Proto_Repultion_loss_batch{test_batch_idx}.png")
 
     def evaluate_all(self, adata_train, save_dir, test_batch_idx, cell_type_map, all_adata_test):
-                # 统计每种细胞类型的数量        
+                # count number of each cell type        
         if self.config["init_class"] == 8 or self.config["filter_sample"]: 
             celltype_counts = adata_train.obs["celltype"].value_counts()
             valid_celltypes = celltype_counts[celltype_counts >= self.config["fewshot"] + 1].index
@@ -3026,7 +2847,7 @@ class ContinualClassify():
         celltype_str_list = np.array(adata_train.obs["celltype"]).tolist()
         current_celltype_labels = [cell_type_map[cell] for cell in celltype_str_list]
         current_celltype_labels = np.array(current_celltype_labels)
-        adata_train.obs["celltype_labels"] = current_celltype_labels                   # 用最终的label修改现在的label编号
+        adata_train.obs["celltype_labels"] = current_celltype_labels                   # update current label indices to final labels
         batch_ids = adata_train.obs["batch_id"].tolist()
         batch_ids = np.array(batch_ids)
         if self.config["randomsplit"]:
@@ -3040,7 +2861,7 @@ class ContinualClassify():
             ) = train_test_split(
                 all_counts, current_celltype_labels, batch_ids, test_size=self.config["valid_ratio"], shuffle=True
             )
-            # 首先划分索引
+            # first split indices
             adata_indices = np.arange(len(adata_train))
             train_idx, valid_idx = train_test_split(
                 adata_indices,
@@ -3049,7 +2870,7 @@ class ContinualClassify():
                 # stratify=current_celltype_labels if not self.config["randomsplit"] else None,
             )
 
-            # 根据索引子集化 adata_train
+            # subset adata_train by indices
             adata_train_split = adata_train[train_idx].copy()
             adata_valid_split = adata_train[valid_idx].copy()
         elif self.config["fewshot"] is not None:
@@ -3091,12 +2912,12 @@ class ContinualClassify():
 
     def evaluate_predict(self, adata_test, save_dir, test_batch_idx, cell_type_map):
         self.config["weight_dir"] = save_dir
-                # 统计每种细胞类型的数量
+            # count number of each cell type
         # celltype_counts = adata_test.obs["celltype"].value_counts()
-        # # 找出数量大于等于 4 的细胞类型
+        # filter cell types with counts less than 4
         # valid_celltypes = celltype_counts[celltype_counts >= 2].index
 
-        # # 过滤掉数量小于 4 的细胞类型对应的样本
+        # # filter adata_test
         # adata_test = adata_test[adata_test.obs["celltype"].isin(valid_celltypes)].copy()
         le = LabelEncoder()
         adata_test.obs["batch_id"] = le.fit_transform(adata_test.obs["batch_id"])
@@ -3109,14 +2930,14 @@ class ContinualClassify():
         )
         genes = adata_test.var["gene_name"].tolist()
         gene_ids = np.array(self.vocab(genes), dtype=int)
-        # 计算当前批次 (test_batch_idx) 的细胞类型和标签
+        # compute cell types and labels for current batch (test_batch_idx)
         # current_label_dict, current_celltype_labels = np.unique(
         #     np.array(adata_test.obs["celltype"].tolist()), return_inverse=True
         # )
         celltype_str_list = np.array(adata_test.obs["celltype"]).tolist()
         current_celltype_labels = [cell_type_map[cell] for cell in celltype_str_list]
         current_celltype_labels = np.array(current_celltype_labels)
-        adata_test.obs["celltype_labels"] = current_celltype_labels                   # 先临时保存一下
+        adata_test.obs["celltype_labels"] = current_celltype_labels                  
         batch_ids = adata_test.obs["batch_id"].tolist()
         batch_ids = np.array(batch_ids)
         if self.config["randomsplit"]:
@@ -3130,7 +2951,7 @@ class ContinualClassify():
             ) = train_test_split(
                 all_counts, current_celltype_labels, batch_ids, test_size=self.config["valid_ratio"], shuffle=True
             )
-            # 首先划分索引
+    
             adata_indices = np.arange(len(adata_test))
             train_idx, valid_idx = train_test_split(
                 adata_indices,
@@ -3139,7 +2960,7 @@ class ContinualClassify():
                 # stratify=current_celltype_labels if not self.config["randomsplit"] else None,
             )
 
-            # 根据索引子集化 adata_train
+            # use index to split adata_train
             adata_train_split = adata_test[train_idx].copy()
             adata_valid_split = adata_test[valid_idx].copy()
         elif self.config["fewshot"] is not None:
@@ -3167,7 +2988,7 @@ class ContinualClassify():
             ) = train_test_split(
                 all_counts, current_celltype_labels, batch_ids, test_size=self.config["valid_ratio"], shuffle=True, stratify=current_celltype_labels
             )
-            # 首先划分索引
+        
             adata_indices = np.arange(len(adata_test))
             train_idx, valid_idx = train_test_split(
                 adata_indices,
@@ -3176,7 +2997,6 @@ class ContinualClassify():
                 stratify=current_celltype_labels if not self.config["randomsplit"] else None,
             )
 
-            # 根据索引子集化 adata_train
             adata_train_split = adata_test[train_idx].copy()
             adata_valid_split = adata_test[valid_idx].copy()
       
@@ -3248,26 +3068,25 @@ class ContinualClassify():
                 preds = output_values.argmax(1).detach().cpu().numpy()
                 predictions.extend(preds)
                 labellist.extend(celltype_labels.detach().cpu().numpy())
-            f1 = f1_score(np.array(labellist), np.array(predictions), average='macro')       # 宏平均
-            f1_micro = f1_score(np.array(labellist), np.array(predictions), average='micro') # 微平均
-            f1_weighted = f1_score(np.array(labellist), np.array(predictions), average='weighted') # 加权平均
+            f1 = f1_score(np.array(labellist), np.array(predictions), average='macro')       # macro average
+            f1_micro = f1_score(np.array(labellist), np.array(predictions), average='micro') # micro average
+            f1_weighted = f1_score(np.array(labellist), np.array(predictions), average='weighted') # weighted average
             result_dict = {
                 "num_samples":total_num,
                 "accuracy": accuracy / total_num,
                 "f1":f1,
                 "f1_micro":f1_micro,
                 "f1_weighted":f1_weighted,
-                "preds":  [int(p) for p in predictions],  # 转成 list
+                "preds":  [int(p) for p in predictions],  # convert to list
                 "labels": [int(p) for p in labellist],
                 }
             with open(str(save_dir) + "/" + f"evaluate_batch_{test_batch_idx}_results.json", "w") as f:
                 json.dump(result_dict, f)
                 
-            ############### 画混淆矩阵 ###################
-            class_names = np.unique(np.concatenate((labellist, predictions)))  # 获取所有类别
+            ############### Plot confusion matrix ###################
+            class_names = np.unique(np.concatenate((labellist, predictions)))  # get all classes
             cm = confusion_matrix(labellist, predictions, labels=class_names)
 
-            # 绘制热力图
 
             plt.figure(figsize=(6, 5))
             sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
@@ -3297,7 +3116,7 @@ def evaluate_predict(save_dir, cell_type_map):
         config["valid_ratio"] = 0.1
     set_seed(config["seed"])
     if config["dataset_name"] == "pancreas" or config["dataset_name"] == "pancreas_":
-        data_paths = ["../data/PANCREAS/" + f"pancreas_batch{i}.h5ad" for i in range(6)]  # 剩下三个batch作为测试集
+        data_paths = ["../data/PANCREAS/" + f"pancreas_batch{i}.h5ad" for i in range(6)]  # the remaining three batches used as test set
     elif config["dataset_name"] == "myeloid":
         data_paths = ["../data/myeloid/" + f"myeloid_batch{i}.h5ad" for i in [1,2,5,6,7]]
 
@@ -3336,7 +3155,7 @@ def evaluate_predict(save_dir, cell_type_map):
         # all_cell_emb.extend(cell_emb_batch)
         # all_label.extend(label_batch)
 
-        all_adata_list.append(adata_test)   # plot 阶段画的是全部train data + val data
+        all_adata_list.append(adata_test)   # in plotting stage, plot all train + val data
         ################### plot the process ###########################
         with open(str(save_dir) + "/" + f"prototype_{test_batch_idx}.pkl", "rb") as f:
             proto = pickle.load(f)
@@ -3456,7 +3275,7 @@ def main(config):
             vocab.append_token(s)
     vocab.set_default_index(vocab["<pad>"])
     if config["DSBN"]:
-        num_batch_types = len(data_paths)    # 原本是1
+        num_batch_types = len(data_paths)    # originally 1
     else:
         num_batch_types = 1
 
@@ -3480,7 +3299,7 @@ def main(config):
     del combined_adata_test, best_model, learning_rate
     import gc
     gc.collect()
-        ########################## Debug 阶段关闭 ##################################
+        ########################## Debug stage turned off ##################################
         # besteval_results, besteval_adata = continual_classify.best_model_evaluate(best_model, adata_t=combined_adata_test, gene_ids=gene_ids,
         #                                         input_layer_key={
         #                                             "normed_raw": "X_normed",
@@ -3550,12 +3369,12 @@ def predict(save_dir, cell_type_map, test_batch_list=None, modeldict_name = "bes
     # config = init_wandb()
     set_seed(config["seed"])
     
-    # filter 的数据包含全部 test batch 的数据（其中outlier cell 以及已知类型）+ 全部参考数据（filter3的数据）
+    # The filtered data contains all test batches (including outlier cells and known types) + all reference data (filter3 dataset)
     if config["dataset_name"] == "pancreas":
-         # 剩下三个batch作为测试集, 这个代码对于pancreas_filter3实验仅在outlier detection中画距离分布图使用 ##################
+         # the remaining three batches used as test set; for `pancreas_filter3` experiments this is used only for outlier detection distance plotting
         data_paths = ["../data/PANCREAS/" + f"pancreas_batch{i}.h5ad" for i in test_batch_list] 
     elif config["dataset_name"] == "pancreas_filter3":
-        ################################## 这个代码对于pancreas_filter3仅在outlier的 query mapping 使用 #####################
+        ################################## For `pancreas_filter3`, this code is used only for outlier query mapping #####################
         data_paths = ["../data/PANCREAS/filter3" + f"/pancreas_batch{i}_delete3_filtered.h5ad" for i in range(6)] + \
             ["../data/PANCREAS/" + f"pancreas_batch{i}.h5ad" for i in test_batch_list]
     elif config["dataset_name"] == "myeloid":
@@ -3602,7 +3421,7 @@ def predict(save_dir, cell_type_map, test_batch_list=None, modeldict_name = "bes
         # )
         genes = adata_test.var["gene_name"].tolist()
         gene_ids = np.array(vocab(genes), dtype=int)
-        ###################### 计算基因重要性 #####################
+        ###################### compute gene importance #####################
         # gene_ids = continual_classify.forward_latent_with_ig(adata_test, save_dir, test_batch_idx, cell_type_map)
         ##########################################
         all_adata_test.append(adata_test)
@@ -3686,120 +3505,12 @@ if __name__ == "__main__":
     # from captum.attr import IntegratedGradients
     # main()
     
-    # config = init_wandb()
-    # set_seed(config["seed"])
-    # save_dir = main(config)
-    
-    # for valid_ratio in [0.1]:
-    #     config['valid_ratio'] = valid_ratio
-    #     save_dir = main(config)
-    
-    # save_dir = "../save/dev_pancreas-May14-14-40-30" # baseline(no_schedular)
-    # save_dir = "../save/dev_pancreas-May20-14-45-44"  # baseline(no_schedular) nlayers_cls=0
-    # save_dir = "../save/dev_pancreas-May24-11-12-02" 
-    # save_dir = "../save/dev_pancreas-May25-11-05-05"   # baseline(no_schedular) nlayers_cls=3
-    # save_dir = "../save/dev_pancreas-May26-11-28-42"     # prototype(no_schedular) nlayers_cls=3, class=14, adapter
-    # save_dir = "../save/dev_pancreas-May25-17-31-27"      # prototype(no_schedular) nlayers_cls=3, class=14,
-    # save_dir = "../save/dev_pancreas-May29-10-47-39"   
-    # save_dir = "../save/dev_pancreas-May29-16-26-51"  
-    # save_dir = "../save/dev_pancreas-Jul02-11-17-39"        # loramoe + prototype(cosine)+warmcosine
-    # save_dir = "../save/dev_pancreas-Jul06-18-01-52"   
-    # save_dir = "../save/dev_pancreas-Jul07-22-10-08"        # loramoe + prototype(cosine)+warmcosine
-    # save_dir = "../save/dev_pancreas-Jul11-15-04-09"          # loramoe + prototype(linear) + no scheduler + not update classifier 
-    # save_dir = "../save/dev_pancreas-Jul14-21-51-37"      # 
-    # save_dir = "../save/dev_pancreas-Aug03-13-20-06"
-    # save_dir = "../save/dev_pancreas-Aug03-12-38-46" 
-    # save_dir = "../save/dev_pancreas-Aug04-10-24-09"
-    # save_dir = "../save/dev_myeloid-Aug10-13-09-35"     # loramoe + prototype(linear)+new_PPP_loss+warmcosine（newest_update_per5epochs) epoch15 +blanced_sampler+replay
-    # save_dir = "../save/dev_myeloid-Aug15-10-08-18"      # myeloid 画图 loramoe + prototype(linear)+new_PPP_loss+warmcosine（newest_update_per5epochs) epoch15 +blanced_sampler+replay【proto_loss_1stbatch】
-    # save_dir = "../save/dev_pancreas-Aug13-21-45-53"       # pancreas 画图
-    # save_dir = "../save/dev_myeloid-Aug20-15-26-02"
-    # save_dir = "../save/dev_pancreas-Nov25-14-41-14" 
-    # save_dir = "../save/dev_pancreas-Nov25-22-52-32"      # decrease_lr_all 效果  20% train 80% valid
-    # save_dir = "../save/dev_pancreas-Nov25-22-03-37" 
-    # save_dir = "../save/dev_myeloid_filter3-Dec14-16-37-17" # 移出三种细胞类型
-    # save_dir = "../save/dev_pancreas_filter3-Dec14-16-29-02"  # 移出三种细胞类型
-    save_dir = "../save/dev_myeloid_filter3-Dec19-17-03-05"    # 移出三种细胞类型
+    save_dir = "../save/dev_myeloid_filter3-Dec19-17-03-05"    # removed three cell types
 
     with open(save_dir + "/celltype_to_label.json", "r") as f:
         cell_type_map = json.load(f)
         f.close()
-    # evaluate_predict(save_dir, cell_type_map)                                         # 验证集
-    # predict(save_dir, cell_type_map, test_batch_list=[6, 7, 8])                         # 测试集
-    predict(save_dir, cell_type_map, test_batch_list = [0, 3, 4], modeldict_name = "best_model_batch_4.pt")                          # 测试集
+    # evaluate_predict(save_dir, cell_type_map)                                         # validation set
+    # predict(save_dir, cell_type_map, test_batch_list=[6, 7, 8])                         # test set
+    predict(save_dir, cell_type_map, test_batch_list = [0, 3, 4], modeldict_name = "best_model_batch_4.pt")                          # test set
     # predict(save_dir, cell_type_map, test_batch_list=[0, 1, 2, 3, 4, 5, 6, 7, 8])
-
-    ######################### pancreas_prototype #############################
-    # save_dir_list = ["../save/dev_pancreas-Nov27-03-26-28",
-    #                  "../save/dev_pancreas-Nov27-02-37-17",
-    #                  "../save/dev_pancreas-Nov27-01-43-32",
-    #                  "../save/dev_pancreas-Nov27-00-37-45",
-    #                  "../save/dev_pancreas-Nov26-23-27-39",
-    #                  "../save/dev_pancreas-Nov26-22-17-02",
-    #                  "../save/dev_pancreas-Nov26-21-22-07",
-    #                  "../save/dev_pancreas-Nov25-22-03-37",
-    #                 "../save/dev_pancreas-Nov25-22-52-32"
-    # ]
-    # with open(save_dir + "/celltype_to_label.json", "r") as f:
-    #     cell_type_map = json.load(f)
-    #     f.close()
-    # #     # predict(save_dir, cell_type_map, test_batch_list=[0, 3, 4])
-    # predict(save_dir, cell_type_map, test_batch_list=[6, 7, 8], modeldict_name = "best_model_batch_0.pt")
-    # accuracy_list = []
-    # f1_macro_list = []
-    # f1_weighted_list = []
-    # for save_dir in save_dir_list:
-    #     with open(str(save_dir) + "/predict_test_batch_3.json", "r") as f: 
-    #         metrics = json.load(f)
-    #         accuracy_list.append(metrics['accuracy'])
-    #         f1_macro_list.append(metrics['f1_macro'])
-    #         f1_weighted_list.append(metrics['f1_weighted'])
-    #         f.close()
-    # df = pd.DataFrame({
-    # 'accuracy': accuracy_list,
-    # 'f1_macro': f1_macro_list,
-    # 'f1_weighted': f1_weighted_list
-    # })
-
-    # # Save DataFrame to CSV
-    # df.to_csv('../plot/final_result/pancreas/metrics_results_valid_ratio_prototype.csv', index=False)
-                    
-    ######################### myeloid_prototype #############################
-    # import glob
-    # save_dir_list = glob.glob("../tutorials/data_ratio_fewshot/myeloid/dev_myeloid-Dec04-*")
-    # save_dir_list = [
-    #     "../save/dev_myeloid-Aug15-10-08-18",
-        # "../save/dev_myeloid-Nov24-21-42-06",
-        # "../save/dev_myeloid-Nov24-22-35-22",
-        # "../save/dev_myeloid-Nov24-23-42-07",
-        # "../save/dev_myeloid-Nov25-01-01-35",
-        # "../save/dev_myeloid-Nov25-02-30-15",
-        # "../save/dev_myeloid-Nov25-04-21-29",
-        # "../save/dev_myeloid-Nov25-06-34-06",
-        # "../save/dev_myeloid-Nov25-09-05-06"
-    # ]
-    # for index in range(len(save_dir_list)):
-    #     save_dir = save_dir_list[index]
-    #     with open(save_dir + "/celltype_to_label.json", "r") as f: 
-    #         cell_type_map = json.load(f)
-    #         f.close()
-    # predict(save_dir, cell_type_map, test_batch_list=[0, 3, 4], modeldict_name = "best_model_batch_0.pt")
-        # predict(save_dir, cell_type_map, test_batch_list=[6, 7, 8])
-    # accuracy_list = []
-    # f1_macro_list = []
-    # f1_weighted_list = []
-    # for save_dir in save_dir_list:
-    #     with open(str(save_dir) + "/predict_test_batch_3.json", "r") as f: 
-    #         metrics = json.load(f)
-    #         accuracy_list.append(metrics['accuracy'])
-    #         f1_macro_list.append(metrics['f1_macro'])
-    #         f1_weighted_list.append(metrics['f1_weighted'])
-    #         f.close()
-    # df = pd.DataFrame({
-    # 'accuracy': accuracy_list,
-    # 'f1_macro': f1_macro_list,
-    # 'f1_weighted': f1_weighted_list
-    # })
-    # df.to_csv('../plot/final_result/myeloid/metrics_results_valid_ratio_prototype.csv', index=False)
-    ###############################################################################
- 
