@@ -32,3 +32,6 @@ Multi-modality Transformer model:
 ## Prototype-based Continual Learning
 The script "../tutorials/platforms_tissues_prototype.py" demonstrates reference datasets continual learning, query mapping, outlier detection, and prototype-correlated gene significance analysis ("../tutorials/prototype_analysis.py").
 The training code is in function 'main()', and the prediction code can be found in function 'predict()'. 
+
+## Trained weights on each tasks
+The trained weights on each tasks will be released online.
