@@ -17,122 +17,6 @@ from torch.nn.modules.normalization import LayerNorm
 import torch
 import torch.nn as nn
 
-# cummulate lora version2
-# class LoRAMoE(nn.Module):
-#     def __init__(self, d_model, adapter_dim=64, num_experts=4):
-#         super(LoRAMoE, self).__init__()
-#         self.num_experts = num_experts
-#         self.d_model = d_model
-#         self.adapter_dim = adapter_dim
-
-#         # LoRA的低秩矩阵
-#         self.lora_down = nn.ModuleList([Linear(d_model, adapter_dim, bias=False) for _ in range(num_experts)])
-#         self.lora_up = nn.ModuleList([Linear(adapter_dim, d_model, bias=False) for _ in range(num_experts)])
-
-#         # gating网络，输入是d_model维度，输出num_experts维度，表示每个token对专家的权重
-#         # self.gate = Linear(d_model, num_experts)
-#         # self.last_gating_probs = None
-
-#     def get_gating_probs(self):
-#         return self.last_gating_probs
-    
-#     def set_active_expert(self, active_id):
-#         for i in range(self.num_experts):
-#             trainable = bool(i == int(active_id.numpy()))
-#             for p in self.lora_down[i].parameters():
-#                 p.requires_grad = trainable
-#             for p in self.lora_up[i].parameters():
-#                 p.requires_grad = trainable
-
-#     def forward(self, x, batch_id=None):
-#         """
-#         x: [..., d_model]
-#         batch_id: int 或 None
-#         - 训练时：指定当前要更新的专家编号 i ∈ [0, num_experts)
-#         - 测试/评估：可传 None；或即使传入，也不会影响梯度（eval 模式）
-#         """
-#         self.set_active_expert(batch_id)
-#         expert_outputs = []
-#         if batch_id is not None:
-#             for i in range(batch_id+1):
-#                 # 训练阶段：只让 batch_id 对应专家参与反向传播，其它专家 no_grad
-#                 if self.training and (batch_id is not None) and bool(i != int(batch_id.numpy())):
-#                     with torch.no_grad():
-#                         down = self.lora_down[i](x)     # [..., adapter_dim]
-#                         up   = self.lora_up[i](down)    # [..., d_model]
-#                 else:
-#                     down = self.lora_down[i](x)
-#                     up   = self.lora_up[i](down)
-
-#                 expert_outputs.append(up)
-#         else:
-#             # 测试/评估阶段：所有专家都参与前向传播
-#             for i in range(self.num_experts):
-#                 down = self.lora_down[i](x)     # [..., adapter_dim]
-#                 up   = self.lora_up[i](down)    # [..., d_model]
-#                 expert_outputs.append(up)
-
-#         # 堆叠并在专家维求和：[..., num_experts, d_model] -> [..., d_model]
-#         expert_outputs = torch.stack(expert_outputs, dim=-2)
-#         output = expert_outputs.sum(dim=-2)
-
-#         return output
-
-# single/two lora for each task
-# class LoRAMoE(nn.Module):
-#     def __init__(self, d_model, adapter_dim=64, num_experts=4):
-#         super(LoRAMoE, self).__init__()
-#         self.num_experts = num_experts
-#         self.d_model = d_model
-#         self.adapter_dim = adapter_dim
-
-#         # LoRA的低秩矩阵
-#         self.lora_down = nn.ModuleList([nn.Linear(d_model, adapter_dim, bias=False) for _ in range(num_experts)])
-#         self.lora_up = nn.ModuleList([nn.Linear(adapter_dim, d_model, bias=False) for _ in range(num_experts)])
-
-#     def compute_orthogonal_loss(self, current_expert_idx):
-#         """
-#         计算当前专家和之前专家之间的正交性损失。
-        
-#         Args:
-#             current_expert_idx (int): 当前任务的专家索引
-#         Returns:
-#             torch.Tensor: 正交性损失
-#         """
-#         current_lora_down = self.lora_down[current_expert_idx].weight  # 当前专家的低秩矩阵
-#         orth_loss = 0.0
-
-#         # 计算当前专家与之前专家之间的正交性损失
-#         for i in range(current_expert_idx):  # 遍历之前的专家
-#             past_lora_down = self.lora_down[i].weight  # 过去任务的低秩矩阵
-#             # 计算当前专家和过去专家之间的正交性损失
-#             orth_loss += torch.sum(torch.matmul(current_lora_down.T, past_lora_down) ** 2)
-#         return orth_loss
-    
-#     def forward(self, x, batch_id=None):
-#         """
-#         x: 输入张量，形状为 [..., d_model]
-#         batch_id: int 或 None
-#         - 训练时：指定当前要更新的专家编号 i ∈ [0, num_experts)
-#         - 测试/评估：可传 None；或即使传入，也不会影响梯度（eval 模式）
-#         """
-#         # 如果传入了batch_id，设置当前专家为可训练
-#         # if batch_id is not None:
-#         #     self.set_active_expert(batch_id)
-        
-#         # 只使用当前专家的计算
-#         if batch_id is not None:
-#             # 使用 batch_id 对应的专家进行计算
-#             down = self.lora_down[0](x)
-#             up = self.lora_up[0](down)
-#             down = self.lora_down[batch_id+1](x)
-#             up = self.lora_up[batch_id+1](down)
-#         else:
-#             down = self.lora_down[0](x)
-#             up = self.lora_up[0](down)
-
-#         return up  # 只返回当前batch_id对应专家的输出
-
 # origional version 1
 class LoRAMoE(nn.Module):
     def __init__(self, d_model, adapter_dim=64, num_experts=4):
@@ -141,35 +25,35 @@ class LoRAMoE(nn.Module):
         self.d_model = d_model
         self.adapter_dim = adapter_dim
 
-        # LoRA的低秩矩阵
+        # Low-rank matrices for LoRA
         self.lora_down = nn.ModuleList([Linear(d_model, adapter_dim, bias=False) for _ in range(num_experts)])
         self.lora_up = nn.ModuleList([Linear(adapter_dim, d_model, bias=False) for _ in range(num_experts)])
 
-        # gating网络，输入是d_model维度，输出num_experts维度，表示每个token对专家的权重
+        # Gating network: input is d_model, output is num_experts (weights per token for each expert)
         self.gate = Linear(d_model, num_experts)
         self.last_gating_probs = None
 
     def get_gating_probs(self):
         return self.last_gating_probs
     def forward(self, x):
-        # x: [seq_len, batch_size, d_model] 或者 [batch_size, seq_len, d_model]
+        # x: [seq_len, batch_size, d_model] or [batch_size, seq_len, d_model]
 
         gate_scores = self.gate(x)  # [*, num_experts]
-        gate_weights = torch.softmax(gate_scores, dim=-1)  # softmax归一化专家权重
+        gate_weights = torch.softmax(gate_scores, dim=-1)  # softmax-normalize expert weights
         self.last_gating_probs = gate_weights.detach() 
-        # 对每个专家做LoRA低秩变换，再加权求和
+        # Apply LoRA low-rank transform per expert and compute weighted sum
         expert_outputs = []
         for i in range(self.num_experts):
             down = self.lora_down[i](x)    # [*, adapter_dim]
             up = self.lora_up[i](down)     # [*, d_model]
             expert_outputs.append(up)
 
-        # 堆叠专家输出：[*, num_experts, d_model]
+        # Stack expert outputs: [*, num_experts, d_model]
         expert_outputs = torch.stack(expert_outputs, dim=-2)
-        # gate_weights: [*, num_experts] -> unsqueeze最后一维方便广播
+        # gate_weights: [*, num_experts] -> unsqueeze last dim for broadcasting
         gate_weights = gate_weights.unsqueeze(-1)
 
-        # 加权求和专家输出
+        # Weighted sum of expert outputs
         output = (expert_outputs * gate_weights).sum(dim=-2)  # [*, d_model]
 
         return output
@@ -411,7 +295,7 @@ class TransformerEncoderLayer(Module):
             self.activation_relu_or_gelu = 0
         self.activation = activation
 
-        # 替换 Adapter 为 LoRAMoE
+        # Replace Adapter with LoRAMoE
         self.lora_moe = LoRAMoE(d_model, adapter_dim=adapter_dim, num_experts=moe_experts)
 
     def __setstate__(self, state):
@@ -424,7 +308,7 @@ class TransformerEncoderLayer(Module):
                                        norm1_weight, norm1_bias, norm2_weight, norm2_bias,
                                        linear1_weight, linear1_bias, linear2_weight, linear2_bias,
                                        merged_mask, mask_type):
-        # 自注意力部分
+        # Self-attention section
         q, k, v = self.self_attn._in_proj_qkv(src, in_proj_weight, in_proj_bias)
         q = self.self_attn._in_proj_q(src, in_proj_weight, in_proj_bias)
         k = self.self_attn._in_proj_k(src, in_proj_weight, in_proj_bias)
@@ -448,22 +332,22 @@ class TransformerEncoderLayer(Module):
         attn_output = attn_output.transpose(-3, -2).contiguous().view(*attn_output.shape[:-3], -1, embed_dim)
         attn_output = F.linear(attn_output, out_proj_weight, out_proj_bias)
 
-        # 残差连接
+        # Residual connection
         x = src + attn_output     # B, 1201, d
 
         if norm_first:
-            # 第一层归一化
+            # First layer normalization
             x_norm = F.layer_norm(x, (embed_dim,), norm1_weight, norm1_bias, norm1_eps)
-            # MLP 部分
+            # MLP (feed-forward) part
             ff_output = self.linear2(self.dropout(self.activation(self.linear1(x_norm))))
-            # LoRAMoE模块
+            # LoRAMoE module
             if batch_id is not None:
                 moe_output = self.lora_moe(x_norm, batch_id)
             else:
                 moe_output = self.lora_moe(x_norm)
-            # 合并 MLP 和 LoRAMoE 输出
+            # Combine MLP and LoRAMoE outputs
             x = x + ff_output + moe_output
-            # 第二层归一化
+            # Second layer normalization
             x = F.layer_norm(x, (embed_dim,), norm2_weight, norm2_bias, norm1_eps)
         else:
             x = F.layer_norm(x, (embed_dim,), norm1_weight, norm1_bias, norm1_eps)
@@ -580,7 +464,7 @@ class TransformerEncoderLayer(Module):
         if self.norm_first:
             x = x + self._sa_block(self.norm1(x), src_mask, src_key_padding_mask, is_causal=is_causal)
             x = x + self._ff_block(self.norm2(x))
-            # 添加 Adapter 模块输出
+            # Add LoRAMoE module output
             if batch_id is None:
                 x = x + self.lora_moe(self.norm2(x))
             else:
@@ -588,7 +472,7 @@ class TransformerEncoderLayer(Module):
         else:
             x = self.norm1(x + self._sa_block(x, src_mask, src_key_padding_mask, is_causal=is_causal))
             x = self.norm2(x + self._ff_block(x))
-            # 添加 Adapter 模块输出
+            # Add LoRAMoE module output
             if batch_id is None:
                 x = x + self.lora_moe(x)
             else:

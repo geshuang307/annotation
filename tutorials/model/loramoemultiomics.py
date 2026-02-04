@@ -1071,8 +1071,6 @@ class DecoderBank(nn.Module):
             logits_curr = self.decoders[batch_id+1](x)
             logits_base = self.decoders[0](x)
             logits_curr = (logits_curr + logits_base) / 2.0
-            # print('当前 decoder 层数', batch_id+1)
-            # print('当前 decoder 的参数梯度', self.decoders[batch_id+1].out_layer.weight.requires_grad)
         else: 
             # prev_logits = []
             # for i in range(self.num_decoders):

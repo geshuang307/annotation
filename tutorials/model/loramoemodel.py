@@ -25,35 +25,6 @@ import sys
 sys.path.append("scgpt/model")
 from scgpt.model.dsbn import DomainSpecificBatchNorm1d
 from scgpt.model.grad_reverse import grad_reverse
-
-# class PrototypeContrastiveLoss(nn.Module):
-#     def __init__(self, num_prototypes=10, embedding_dim=512, temperature=0.1):
-#         super().__init__()
-#         self.K = num_prototypes
-#         self.temperature = temperature
-
-#         # 初始化原型向量（可训练 or 使用 EMA）
-#         self.prototypes = nn.Parameter(torch.randn(self.K, embedding_dim))
-#         nn.init.xavier_uniform_(self.prototypes)
-
-#     def forward(self, embeddings):
-#         """
-#         embeddings: Tensor [B, D]  -> 每个 cell 的 embedding
-#         """
-#         # Normalize prototypes and embeddings
-#         embeddings = F.normalize(embeddings, dim=1)  # [B, D]
-#         prototypes = F.normalize(self.prototypes, dim=1)  # [K, D]
-
-#         # 计算 cosine 相似度：[B, K]
-#         logits = torch.matmul(embeddings, prototypes.T) / self.temperature
-
-#         # target assignment: 每个 sample 属于最相似的原型
-#         targets = torch.argmax(logits.detach(), dim=1)  # [B]
-
-#         # CrossEntropyLoss with logits: 模拟 InfoNCE
-#         loss = F.cross_entropy(logits, targets)
-
-#         return loss, logits, targets
     
 class TransformerModel(nn.Module):
     def __init__(
@@ -244,7 +215,7 @@ class TransformerModel(nn.Module):
             :obj:`Tensor`: shape (batch, embsize)
         """
         if self.cell_emb_style == "cls":
-            cell_emb = layer_output[:, 0, :]  # (batch, embsize)   torch.Size([64, 512]) 取第0维度的token embedding
+            cell_emb = layer_output[:, 0, :]  # (batch, embsize)   torch.Size([64, 512]) take the token embedding at position 0 (CLS)
         elif self.cell_emb_style == "avg-pool":
             cell_emb = torch.mean(layer_output, dim=1)
         elif self.cell_emb_style == "w-pool":
@@ -401,7 +372,7 @@ class TransformerModel(nn.Module):
         )
         if self.explicit_zero_prob and do_sample:
             bernoulli = Bernoulli(probs=mlm_output["zero_probs"])   
-            output["mlm_output"] = bernoulli.sample() * mlm_output["pred"]    # 模拟真实情况下的输出值 = 二项分布的概率采样*预测表达量
+            output["mlm_output"] = bernoulli.sample() * mlm_output["pred"]    # simulate real-case output: Bernoulli sample * predicted expression
         else:
             output["mlm_output"] = mlm_output["pred"]  # (batch, seq_len)
         if self.explicit_zero_prob:
@@ -909,7 +880,7 @@ class ExprDecoder(nn.Module):
                 nn.Linear(d_model, d_model),
                 nn.LeakyReLU(),
                 nn.Linear(d_model, 1),
-            )           # 预测实际表达量为零的概率
+            )           # predict probability that true expression is zero
 
     def forward(self, x: Tensor) -> Dict[str, Tensor]:
         """x is the output of the transformer, (batch, seq_len, d_model)"""
@@ -1052,7 +1023,10 @@ class MVCDecoder(nn.Module):
 
 class AdversarialDiscriminator(nn.Module):
     """
-    Discriminator for the adversarial training for batch correction.不能分辨出样本来自哪个 batch/domain，从而使 encoder 学会生成 batch-invariant 的表示
+    Discriminator for adversarial training used in batch correction.
+    The adversarial objective makes the discriminator unable to predict
+    which batch/domain a sample came from, encouraging the encoder to
+    learn batch-invariant representations.
     """
 
     def __init__(
