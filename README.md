@@ -1,7 +1,7 @@
 # scEvolver
 
 scEvolver is a continual learning framework designed for single-cell annotation. It is built on a pretrained foundation model and utilizes parameter-efficient fine-tuning (PEFT) to support continual learning.
-![scEvolver overview](figures/Figure 1.pdf)
+![scEvolver overview](figures/Figure1.pdf)
 
 ## Data
 
